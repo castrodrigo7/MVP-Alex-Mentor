@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GobLab Gran Canaria - Tu Mentor IA para Emprender</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;color:#333}
+    .app-container{display:flex;height:100vh;max-width:1400px;margin:0 auto;background:rgba(255,255,255,.95);backdrop-filter:blur(10px)}
+    .chat-panel{flex:1;display:flex;flex-direction:column;background:#fff;border-radius:20px 0 0 20px;box-shadow:0 10px 30px rgba(0,0,0,.1)}
+    .chat-header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:25px 30px;border-radius:20px 0 0 0;position:relative}
+    .mentor-info h1{font-size:24px;font-weight:600;margin-bottom:5px}
+    .mentor-info p{font-size:14px;opacity:.9}
+    .connection-status{position:absolute;top:15px;right:20px;display:flex;align-items:center;gap:8px;font-size:12px;background:rgba(255,255,255,.2);padding:5px 10px;border-radius:15px}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:#ff6b6b}
+    .status-dot.connected{background:#51cf66}
+    .chat-messages{flex:1;overflow-y:auto;padding:30px;background:#fafafa}
+    .message{margin-bottom:25px;animation:slideIn .5s ease-out}
+    @keyframes slideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    .message.ai{display:flex;gap:15px}
+    .message.user{display:flex;gap:15px;flex-direction:row-reverse;margin-left:50px}
+    .message-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+    .message.ai .message-avatar{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff}
+    .message.user .message-avatar{background:linear-gradient(135deg,#4ade80 0%,#16a34a 100%);color:#fff}
+    .message-content{flex:1;background:#fff;padding:20px;border-radius:18px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+    .message.user .message-content{background:linear-gradient(135deg,#e0f2fe 0%,#b3e5fc 100%)}
+    .message-text{line-height:1.6;font-size:15px}
+    .error-message{background:linear-gradient(135deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;padding:15px 20px;border-radius:12px;margin:20px 0;display:flex;align-items:center;gap:10px}
+    .typing-indicator{display:flex;align-items:center;gap:15px;padding:20px 30px}
+    .typing-dots{display:flex;gap:5px}
+    .typing-dot{width:8px;height:8px;background:#667eea;border-radius:50%;animation:typingDot 1.4s infinite}
+    .typing-dot:nth-child(2){animation-delay:.2s}
+    .typing-dot:nth-child(3){animation-delay:.4s}
+    @keyframes typingDot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-10px)}}
+    .chat-input{padding:25px 30px;background:#fff;border-top:1px solid #e5e7eb;border-radius:0 0 0 20px}
+    .input-container{display:flex;gap:15px;align-items:flex-end}
+    .input-field{flex:1;border:2px solid #e5e7eb;border-radius:25px;padding:15px 20px;font-size:15px;resize:none;min-height:50px;max-height:120px;transition:all .3s}
+    .input-field:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.1)}
+    .send-button{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;width:50px;height:50px;border-radius:50%;font-size:20px;cursor:pointer;transition:all .3s;display:flex;align-items:center;justify-content:center}
+    .send-button:hover{transform:scale(1.1);box-shadow:0 4px 15px rgba(102,126,234,.4)}
+    .send-button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+    .progress-panel{width:400px;background:#fff;border-radius:0 20px 20px 0;box-shadow:0 10px 30px rgba(0,0,0,.1);display:flex;flex-direction:column}
+    .progress-header{background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:#fff;padding:25px;border-radius:0 20px 0 0}
+    .progress-title{font-size:18px;font-weight:600;margin-bottom:10px}
+    .progress-subtitle{font-size:14px;opacity:.9}
+    .plan-preview{flex:1;padding:25px;overflow-y:auto}
+    .plan-section{margin-bottom:20px;padding:15px;background:#f8fafc;border-radius:8px;border-left:4px solid #e5e7eb;transition:all .3s}
+    .plan-section.active{border-left-color:#f59e0b;background:#fffbeb}
+    .plan-section.completed{border-left-color:#10b981;background:#ecfdf5}
+    .section-title{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+    .section-status{width:18px;height:18px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+    .section-status.active{background:#f59e0b;animation:pulse 2s infinite}
+    .section-status.completed{background:#10b981}
+    @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+    .section-content{font-size:12px;color:#6b7280;line-height:1.4}
+    .welcome-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:50px;height:100%}
+    .welcome-icon{width:80px;height:80px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;color:#fff;margin-bottom:25px;animation:bounce 2s infinite}
+    @keyframes bounce{0%,20%,50%,80%,100%{transform:translateY(0)}40%{transform:translateY(-10px)}60%{transform:translateY(-5px)}}
+    .welcome-title{font-size:28px;font-weight:700;margin-bottom:15px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .welcome-subtitle{font-size:16px;color:#6b7280;margin-bottom:30px;max-width:400px;line-height:1.6}
+    .start-button{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;padding:15px 30px;border-radius:25px;font-size:16px;font-weight:600;cursor:pointer;transition:all .3s}
+    .start-button:hover{transform:translateY(-3px);box-shadow:0 10px 25px rgba(102,126,234,.4)}
+    .quick-responses{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
+    .quick-response{background:rgba(102,126,234,.1);color:#667eea;border:1px solid rgba(102,126,234,.2);padding:8px 15px;border-radius:20px;font-size:13px;cursor:pointer;transition:all .3s}
+    .quick-response:hover{background:#667eea;color:#fff;transform:translateY(-2px)}
+    .ai-research-indicator{background:linear-gradient(135deg,#ec4899 0%,#be185d 100%);color:#fff;padding:15px 20px;border-radius:12px;margin:20px 0;display:flex;align-items:center;gap:10px;animation:glow 2s infinite alternate}
+    @keyframes glow{from{box-shadow:0 0 20px rgba(236,72,153,.3)}to{box-shadow:0 0 30px rgba(236,72,153,.6)}}
+    .research-text{flex:1;font-size:13px}
+    .research-spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top:2px solid #fff;border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+    .message-actions{margin-top:15px;display:flex;gap:10px;flex-wrap:wrap}
+    .action-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;padding:8px 16px;border-radius:20px;font-size:13px;cursor:pointer;transition:all .3s}
+    .action-btn:hover{transform:translateY(-2px);box-shadow:0 4px 15px rgba(102,126,234,.4)}
+    @media (max-width:1024px){
+      .app-container{flex-direction:column}
+      .progress-panel{width:100%;height:200px;border-radius:0}
+      .chat-panel{border-radius:0}
+    }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="mentor-info">
+        <h1>Alex - Tu Mentor IA para crear Planes de Negocio</h1>
+        <p>GobLab Gran Canaria - Laboratorio de Innovación Pública</p>
+      </div>
+      <div class="connection-status" id="connectionStatus">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Conectando...</span>
+      </div>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon">💡</div>
+        <h1 class="welcome-title">¡Hola! Soy Alex</h1>
+        <p class="welcome-subtitle">
+          Tu mentor de inteligencia artificial del GobLab Gran Canaria. Te ayudo a crear un plan de negocio profesional de forma conversacional y sencilla.
+        </p>
+        <button class="start-button" id="startBtn">Comenzar mi plan de negocio</button>
+      </div>
+    </div>
+
+    <div class="chat-input">
+      <div class="input-container">
+        <textarea class="input-field" id="messageInput" placeholder="Escribe tu respuesta aquí..." disabled></textarea>
+        <button class="send-button" id="sendBtn" disabled>➤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="progress-panel">
+    <div class="progress-header">
+      <div class="progress-title">Tu Plan de Negocio</div>
+      <div class="progress-subtitle">Creándose automáticamente</div>
+    </div>
+
+    <div class="plan-preview" id="planPreview">
+      <div class="plan-section" id="section-name">
+        <div class="section-title"><div class="section-status">1</div>Tu Información</div>
+        <div class="section-content">Esperando tu nombre...</div>
+      </div>
+      <div class="plan-section" id="section-idea">
+        <div class="section-title"><div class="section-status">2</div>Tu Idea de Negocio</div>
+        <div class="section-content">Pendiente de completar...</div>
+      </div>
+      <div class="plan-section" id="section-problem">
+        <div class="section-title"><div class="section-status">3</div>Problema que Resuelves</div>
+        <div class="section-content">Pendiente de completar...</div>
+      </div>
+      <div class="plan-section" id="section-customer">
+        <div class="section-title"><div class="section-status">4</div>Cliente Objetivo</div>
+        <div class="section-content">Pendiente de completar...</div>
+      </div>
+      <div class="plan-section" id="section-revenue">
+        <div class="section-title"><div class="section-status">5</div>Modelo de Ingresos</div>
+        <div class="section-content">Pendiente de completar...</div>
+      </div>
+      <div class="plan-section" id="section-research">
+        <div class="section-title"><div class="section-status">6</div>Investigación de Mercado</div>
+        <div class="section-content">Análisis IA pendiente...</div>
+      </div>
+      <div class="plan-section" id="section-final">
+        <div class="section-title"><div class="section-status">7</div>Plan Completo</div>
+        <div class="section-content">Generación final pendiente...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  webhookUrl: 'https://n8n.icc-e.org/webhook/mentor-chat',
+  pollingUrl: 'https://n8n.icc-e.org/webhook/mentor-chat-pdf',
+  requestTimeout: 60000,
+  maxRetries: 2,
+  retryDelay: 4000,
+  pollingInterval: 5000,
+  maxPollingAttempts: 120
+};
+
+const state = {
+  userId: null,
+  sessionId: null,
+  currentStep: 0,
+  isConnected: false,
+  isTyping: false,
+  conversationData: {}
+};
+
+let lastUserMessage = '';
+
+const elements = {
+  startBtn: document.getElementById('startBtn'),
+  sendBtn: document.getElementById('sendBtn'),
+  messageInput: document.getElementById('messageInput'),
+  chatMessages: document.getElementById('chatMessages'),
+  welcomeScreen: document.getElementById('welcomeScreen'),
+  statusDot: document.getElementById('statusDot'),
+  statusText: document.getElementById('statusText')
+};
+
+const stepSectionMap = {
+  1:'section-name',
+  2:'section-idea',
+  3:'section-problem',
+  4:'section-customer',
+  5:'section-revenue',
+  6:'section-research',
+  7:'section-final'
+};
+
+document.addEventListener('DOMContentLoaded', initializeApp);
+
+function initializeApp() {
+  state.userId = `user_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+  state.sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+
+  elements.startBtn.addEventListener('click', startConversation);
+  elements.sendBtn.addEventListener('click', sendMessage);
+  elements.messageInput.addEventListener('keypress', handleKeyPress);
+
+  checkConnection();
+
+  console.log('Alex MVP inicializado', {
+    userId: state.userId,
+    sessionId: state.sessionId,
+    webhookUrl: CONFIG.webhookUrl
+  });
+}
+
+function setUIBusy(busy, label){
+  elements.sendBtn.disabled = !!busy;
+  elements.messageInput.disabled = !!busy;
+  elements.sendBtn.textContent = busy ? '…' : '➤';
+  if (label) showAIMessage(label);
+}
+
+function sendMessage() {
+  const message = elements.messageInput.value.trim();
+  if (!message || state.isTyping) return;
+
+  lastUserMessage = message;
+  showUserMessage(message);
+  elements.messageInput.value = '';
+  removeQuickReplies();
+
+  processMessage(message);
+}
+
+async function checkConnection() {
+  const payload = { message: '_connection_test', userId: state.userId, sessionId: state.sessionId };
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const r = await fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload),
+      mode: 'cors',
+      credentials: 'omit',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (r.ok) {
+      setConnectionStatus(true,'Conectado');
+      return await r.json().catch(() => ({}));
+    } else {
+      setConnectionStatus(false, `Error ${r.status}`);
+      return {};
+    }
+  } catch (err) {
+    setConnectionStatus(false,'Error de conexión');
+    return {};
+  }
+}
+
+function setConnectionStatus(connected, message) {
+  state.isConnected = connected;
+  elements.statusDot.classList.toggle('connected', connected);
+  elements.statusText.textContent = message;
+}
+
+function handleKeyPress(e){
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function startConversation(){
+  if(!state.isConnected){
+    showError('No hay conexión con el servidor. Reintentando...');
+    checkConnection();
+    return;
+  }
+
+  elements.welcomeScreen.style.display='none';
+  elements.messageInput.disabled=false;
+  elements.sendBtn.disabled=false;
+  elements.messageInput.focus();
+
+  setTimeout(async () => {
+    const mensajeAnterior = lastUserMessage;
+    lastUserMessage = '_iniciar_conversacion';
+    await processMessage('_iniciar_conversacion');
+    if (mensajeAnterior && mensajeAnterior !== '_iniciar_conversacion') {
+      lastUserMessage = mensajeAnterior;
+    }
+  }, 200);
+}
+
+async function processMessage(message, retryCount=0){
+  showTyping();
+
+  const payload = {
+    message,
+    userId: state.userId,
+    sessionId: state.sessionId,
+    currentStep: state.currentStep,
+    state: state.conversationData
+  };
+
+  try{
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.requestTimeout);
+
+    const response = await fetch(CONFIG.webhookUrl, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
+      body: JSON.stringify(payload),
+      mode:'cors',
+      credentials:'omit',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const ct = response.headers.get('content-type') || '';
+    const data = ct.includes('application/json') ? await response.json()
+             : { success:true, response: await response.text() };
+
+    hideTyping();
+    handleSuccessfulResponse(data);
+
+  } catch(error){
+    hideTyping();
+    if(retryCount < CONFIG.maxRetries){
+      const delay = CONFIG.retryDelay * Math.pow(1.5, retryCount);
+      setTimeout(()=>processMessage(message, retryCount+1), delay);
+    }else{
+      showError('Error conectando con el servidor.');
+    }
+  }
+}
+
+function handleSuccessfulResponse(data) {
+  if (data && (data.success !== false) && (data.response || data.message || data.pdfGenerated)) {
+    if (data.status === 'processing' || data.longExecution || data.processingPDF) {
+      showAIMessage(data.response || 'Estoy procesando tu plan…');
+      pollPdf();
+      return;
+    }
+
+    if (data.pdfGenerated && data.pdfUrl) {
+      localStorage.setItem('alex_last_pdf_url', data.pdfUrl);
+      localStorage.setItem('alex_last_pdf_filename', data.fileName || `plan_negocio_${Date.now()}.pdf`);
+
+      if (data.state) state.conversationData = data.state;
+
+      for (let i = 1; i <= 7; i++) {
+        const seccion = document.getElementById(stepSectionMap[i]);
+        if (!seccion) continue;
+        const status = seccion.querySelector('.section-status');
+        const content = seccion.querySelector('.section-content');
+        seccion.classList.remove('active');
+        seccion.classList.add('completed');
+        status.classList.add('completed');
+        status.textContent = '✓';
+        if (i === 6) {
+          content.innerHTML = `
+            <strong>Análisis completado:</strong><br>
+            • Mercado analizado<br>
+            • Competidores: 4 principales<br>
+            • Oportunidades detectadas
+          `;
+        } else if (i === 7) {
+          content.innerHTML = `
+            <strong>¡Plan generado con éxito!</strong><br>
+            • PDF de 25 páginas<br>
+            • Análisis financiero incluido<br>
+            • <a href="${data.pdfUrl}" target="_blank" style="color: #667eea;">Ver PDF</a>
+          `;
+        }
+      }
+      updateProgress(100);
+      showAIMessage(
+        '¡Tu Plan de Negocio está listo! 🎉',
+        [
+          { text: '📄 Descargar PDF', handler: `window.open('${data.pdfUrl}', '_blank')` },
+          { text: '📧 Enviar por email', handler: 'emailPlan()' },
+          { text: '🔄 Crear nuevo plan', handler: 'clearSession()' }
+        ]
+      );
+      elements.messageInput.placeholder = 'Plan completado. Selecciona una opción o haz consultas específicas.';
+      return;
+    }
+
+    const textoAI = data.response || data.message;
+    if (textoAI && textoAI !== "Error: no hay respuesta") showAIMessage(textoAI);
+
+    const prev = state.currentStep;
+    if (data.currentStep !== undefined) state.currentStep = parseInt(data.currentStep);
+    if (data.progress !== undefined) updateProgress(data.progress);
+    if (data.state) state.conversationData = data.state;
+
+    if (lastUserMessage !== '_iniciar_conversacion' && data.currentStep > prev) {
+      let mensajeParaActualizar = lastUserMessage;
+      if (data.currentStep === 6 && prev === 5) {
+        const seccion = document.getElementById('section-research');
+        if (seccion) {
+          const status = seccion.querySelector('.section-status');
+          const contenido = seccion.querySelector('.section-content');
+          seccion.classList.add('completed');
+          status.classList.add('completed');
+          status.textContent = '✓';
+          contenido.innerHTML = `
+            <strong>Análisis completado:</strong><br>
+            • Mercado analizado<br>
+            • Competidores identificados<br>
+            • Oportunidades detectadas
+          `;
+        }
+      }
+      updatePlanSection(mensajeParaActualizar, data.currentStep);
+    }
+
+    if (Array.isArray(data.quickReplies) && data.quickReplies.length) addQuickReplies(data.quickReplies);
+    if (data.isComplete && !data.pdfGenerated) showAIMessage('Generando tu Plan de Negocio en PDF... Un momento por favor... ⏳');
+  } else {
+    showError('La respuesta del servidor no tiene el formato esperado.');
+  }
+}
+
+async function pollPdf(tries = 0) {
+  try {
+    const r = await fetch(CONFIG.pollingUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ sessionId: state.sessionId, userId: state.userId }),
+      mode: 'cors',
+      credentials: 'omit',
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const s = await r.json().catch(() => ({}));
+
+    if (typeof s.progress === 'number') updateProgress(Math.max(80, Math.min(99, s.progress)));
+
+    if (s.pdfGenerated && s.pdfUrl) {
+      handleSuccessfulResponse(s);
+      return;
+    }
+
+    if (tries >= CONFIG.maxPollingAttempts) {
+      showError('El servidor tarda más de lo esperado. Intentá nuevamente.');
+      return;
+    }
+
+    setTimeout(() => pollPdf(tries + 1), CONFIG.pollingInterval);
+
+  } catch (err) {
+    const wait = Math.min(30000, CONFIG.pollingInterval * (1 + Math.floor(tries / 5)));
+    setTimeout(() => pollPdf(tries + 1), wait);
+  }
+}
+
+function addQuickReplies(replies){
+  setTimeout(()=> {
+    const quickDiv = document.createElement('div');
+    quickDiv.className='quick-responses';
+    quickDiv.id='quickReplies';
+    quickDiv.innerHTML = replies.map(r=>`<div class="quick-response" onclick="selectQuickReply('${escapeHTML(r)}')">${escapeHTML(r)}</div>`).join('');
+    elements.chatMessages.appendChild(quickDiv);
+    scrollToBottom();
+  }, 300);
+}
+
+function selectQuickReply(reply) {
+  if (reply.toLowerCase().includes('generar plan')) {
+    generatePlanCompleto();
+  } else {
+    elements.messageInput.value = reply;
+    sendMessage();
+  }
+}
+
+function removeQuickReplies(){
+  const quick = document.getElementById('quickReplies');
+  if(quick) quick.remove();
+}
+
+async function generatePlanCompleto() {
+  setUIBusy(true, 'Procesando tu solicitud…');
+  updateProgress(80);
+  try {
+    const payload = {
+      message: 'Generar plan completo',
+      userId: state.userId,
+      sessionId: state.sessionId,
+      currentStep: 6,
+      state: state.conversationData
+    };
+
+    const resp = await fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(55000)
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (data && (data.status === 'processing' || data.longExecution)) {
+      showAIMessage(data.response || 'Generando tu plan…');
+      pollPdf();
+    } else {
+      pollPdf();
+    }
+  } catch (e) {
+    pollPdf();
+  } finally {
+    setUIBusy(false);
+  }
+}
+
+function completeBusinessPlan(){
+  for (let i = 1; i <= 7; i++) {
+    const seccion = document.getElementById(stepSectionMap[i]);
+    if (!seccion) continue;
+    const status = seccion.querySelector('.section-status');
+    const content = seccion.querySelector('.section-content');
+    seccion.classList.remove('active');
+    seccion.classList.add('completed');
+    status.classList.add('completed');
+    status.textContent = '✓';
+    if (i === 7) {
+      content.innerHTML = `
+        <strong>Plan completo generado:</strong><br>
+        • 25 páginas profesionales<br>
+        • Análisis financiero detallado<br>
+        • Roadmap de implementación
+      `;
+    }
+  }
+  showAIMessage('¡Tu Plan de Negocio está listo! 🎉', [
+    { text: '📄 Descargar PDF', handler: 'downloadPlan()' },
+    { text: '📧 Enviar por email', handler: 'emailPlan()' },
+    { text: '💬 Hacer consultas', handler: 'askQuestions()' }
+  ]);
+}
+
+function updatePlanSection(mensajeUsuario, pasoRecibido) {
+  const pasoCompletadoPorUsuario = pasoRecibido - 1;
+  const seccionId = stepSectionMap[pasoCompletadoPorUsuario];
+  if (!seccionId) return;
+
+  const seccion = document.getElementById(seccionId);
+  if (!seccion) return;
+
+  const status = seccion.querySelector('.section-status');
+  const contenido = seccion.querySelector('.section-content');
+
+  seccion.classList.remove('active');
+  seccion.classList.add('completed');
+  status.classList.add('completed');
+  status.textContent = '✔';
+
+  if (seccionId === 'section-research') {
+    contenido.innerHTML = `
+      <strong>Análisis completado:</strong><br>
+      • Mercado analizado<br>
+      • Competidores identificados<br>
+      • Oportunidades detectadas
+    `;
+  } else if (seccionId === 'section-final') {
+    contenido.innerHTML = `
+      <strong>Plan generado:</strong><br>
+      • 25 páginas profesionales<br>
+      • Análisis financiero<br>
+      • Roadmap implementación
+    `;
+  } else if (seccionId === 'section-revenue' && pasoRecibido === 6) {
+    if (state.conversationData?.data?.ingresos) {
+      contenido.textContent = state.conversationData.data.ingresos;
+    } else if (mensajeUsuario && mensajeUsuario.trim() && mensajeUsuario !== '_iniciar_conversacion') {
+      contenido.textContent = mensajeUsuario;
+    }
+  } else {
+    if (mensajeUsuario && mensajeUsuario.trim() && mensajeUsuario !== '_iniciar_conversacion') {
+      const textoCorto = mensajeUsuario.length > 50 
+        ? mensajeUsuario.substring(0, 50) + '...' 
+        : mensajeUsuario;
+      contenido.textContent = textoCorto;
+    }
+  }
+
+  if (pasoRecibido < 7) {
+    const siguienteSeccionId = stepSectionMap[pasoRecibido];
+    if (siguienteSeccionId) activateSection(siguienteSeccionId);
+  }
+}
+
+function activateSection(sectionId){
+  const section = document.getElementById(sectionId);
+  if(section && !section.classList.contains('completed')){
+    section.classList.add('active');
+    const status = section.querySelector('.section-status');
+    status.classList.add('active');
+  }
+}
+
+function updateProgress(progress){
+  console.log(`📈 Progreso: ${progress}%`);
+}
+
+function showUserMessage(message){
+  const messageDiv = document.createElement('div');
+  messageDiv.className='message user';
+  messageDiv.innerHTML = `
+    <div class="message-avatar">👤</div>
+    <div class="message-content"><div class="message-text">${escapeHTML(message)}</div></div>`;
+  elements.chatMessages.appendChild(messageDiv);
+  scrollToBottom();
+}
+
+function showAIMessage(message, actions=[]){
+  const messageDiv = document.createElement('div');
+  messageDiv.className='message ai';
+  let actionsHTML='';
+  if(actions.length){
+    actionsHTML = '<div class="message-actions">' +
+      actions.map(a=>`<button class="action-btn" onclick="${a.handler}">${escapeHTML(a.text)}</button>`).join('') +
+      '</div>';
+  }
+  messageDiv.innerHTML = `
+    <div class="message-avatar">🤖</div>
+    <div class="message-content">
+      <div class="message-text">${formatMessage(message)}</div>
+      ${actionsHTML}
+    </div>`;
+  elements.chatMessages.appendChild(messageDiv);
+  scrollToBottom();
+}
+
+function showError(message){
+  const errorDiv = document.createElement('div');
+  errorDiv.className='error-message';
+  errorDiv.innerHTML = `<span>⚠️</span><span>${escapeHTML(message)}</span>`;
+  elements.chatMessages.appendChild(errorDiv);
+  scrollToBottom();
+}
+
+function showTyping(){
+  const typingDiv = document.createElement('div');
+  typingDiv.className='typing-indicator';
+  typingDiv.id='typing';
+  typingDiv.innerHTML = `
+    <div class="typing-dots">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>
+    <span>Alex está escribiendo...</span>`;
+  elements.chatMessages.appendChild(typingDiv);
+  state.isTyping=true;
+  scrollToBottom();
+}
+
+function hideTyping(){
+  const typing = document.getElementById('typing');
+  if(typing) typing.remove();
+  state.isTyping=false;
+}
+
+function scrollToBottom(){
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+function escapeHTML(text){ const div=document.createElement('div'); div.textContent=text; return div.innerHTML; }
+function formatMessage(text){
+  return String(text||'')
+    .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br>');
+}
+
+function downloadPlan() {
+  const pdfUrl = localStorage.getItem('alex_last_pdf_url');
+  if (pdfUrl) {
+    window.open(pdfUrl, '_blank');
+    showAIMessage('✅ Abriendo tu PDF en una nueva pestaña.');
+  } else {
+    showError('No se encontró un PDF generado. Completa todos los pasos primero.');
+  }
+}
+
+function generateLocalPDF() {
+  const data = state.conversationData.data;
+  if (!data) return showError('No hay datos para generar el plan.');
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Plan de Negocio - ${data.nombre || ''}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
+        h1 { color: #667eea; }
+        h2 { color: #764ba2; margin-top: 30px; }
+        .section { margin-bottom: 30px; }
+        .header { text-align: center; padding: 20px; background: #f0f0f0; margin-bottom: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>Plan de Negocio</h1>
+        <p>Generado por Alex - GobLab Gran Canaria</p>
+      </div>
+      <div class="section"><h2>Datos del Emprendedor</h2><p><strong>Nombre:</strong> ${data.nombre || ''}</p><p><strong>Fecha:</strong> ${new Date().toLocaleDateString('es-ES')}</p></div>
+      <div class="section"><h2>Idea de Negocio</h2><p>${data.idea || ''}</p></div>
+      <div class="section"><h2>Problema que Resuelve</h2><p>${data.problema || ''}</p></div>
+      <div class="section"><h2>Cliente Objetivo</h2><p>${data.cliente || ''}</p></div>
+      <div class="section"><h2>Modelo de Ingresos</h2><p>${data.ingresos || ''}</p></div>
+      <div class="section"><h2>Análisis de Mercado</h2><p>El mercado de Gran Canaria presenta oportunidades únicas para tu proyecto.</p></div>
+      <div class="section"><h2>Próximos Pasos</h2><ol><li>Validar la idea con un grupo piloto</li><li>Preparar documentación</li><li>Desarrollar MVP</li></ol></div>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `plan_negocio_${data.nombre || 'plan'}_${Date.now()}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showAIMessage('📄 Plan descargado como HTML. Podés convertirlo a PDF con Ctrl+P.');
+}
+
+async function emailPlan() {
+  const email = prompt('¿A qué email querés enviar tu plan?');
+  if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return showError('Email no válido.');
+  if (!state.conversationData?.data) return showError('Completá todos los pasos primero.');
+
+  showAIMessage(`📧 Enviando plan a ${email}...`);
+  try {
+    const response = await fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        message: '_send_email',
+        email,
+        userId: state.userId,
+        sessionId: state.sessionId,
+        currentStep: 7,
+        state: state.conversationData,
+        pdfUrl: localStorage.getItem('alex_last_pdf_url') || undefined
+      }),
+      mode: 'cors'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.success) {
+      showAIMessage(`✅ ¡Plan enviado a ${email}!`);
+    } else {
+      throw new Error(data.error || 'Falló el envío');
+    }
+  } catch (error) {
+    showAIMessage('No se pudo enviar automáticamente. Abrí tu cliente de correo para enviarlo.');
+    generateMailtoLink(email);
+  }
+}
+
+function generateMailtoLink(presetEmail) {
+  const email = presetEmail || prompt('¿A qué email querés enviar el plan?');
+  if (!email) return;
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return showError('Email no válido.');
+  const data = state.conversationData.data || {};
+  const subject = encodeURIComponent(`Plan de Negocio - ${data.idea || 'Tu proyecto'}`);
+  const body = encodeURIComponent(`Hola ${data.nombre || ''},\\n\\nAdjunto tu plan de negocio generado por Alex - GobLab Gran Canaria.\\n\\n¡Éxitos!`);
+  window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_blank');
+}
+
+function askQuestions() {
+  showAIMessage(`💬 ¡Perfecto! Puedo responder preguntas sobre tu plan. ¿Qué te gustaría saber?`);
+  elements.messageInput.placeholder = 'Escribí tu pregunta…';
+  elements.messageInput.focus();
+}
+
+function clearSession() {
+  if (confirm('¿Querés empezar un nuevo plan? Se perderá el progreso actual.')) {
+    localStorage.removeItem('alex_session_id');
+    localStorage.removeItem('alex_last_pdf_url');
+    localStorage.removeItem('alex_last_pdf_filename');
+    state.sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
+    state.currentStep = 0;
+    state.conversationData = {};
+    window.location.reload();
+  }
+}
+
+window.downloadPlan = downloadPlan;
+window.emailPlan = emailPlan;
+window.askQuestions = askQuestions;
+window.selectQuickReply = selectQuickReply;
+window.generateLocalPDF = generateLocalPDF;
+window.generateMailtoLink = generateMailtoLink;
+window.generatePlanCompleto = generatePlanCompleto;
+</script>
+</body>
+</html>
