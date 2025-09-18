@@ -147,25 +147,25 @@
 </div>
 
 <script>
-/* ===================== CONFIG ===================== */
+// ===================== CONFIGURACIÓN SIMPLIFICADA =====================
 const CONFIG = {
   webhookUrl: 'https://n8n.icc-e.org/webhook/mentor-chat',
-  requestTimeout: 55000, // 55 segundos para evitar timeout del webhook
-  maxRetries: 0, // Sin reintentos
-  retryDelay: 0 // No usado
+  statusUrl: 'https://n8n.icc-e.org/webhook/mentor-chat-pdf',
+  requestTimeout: 50000, // 50 segundos para evitar timeout de webhook
+  pollingInterval: 15000 // Verificar PDF cada 15 segundos
 };
 
-/* ===================== STATE & DOM ===================== */
+// ===================== ESTADO Y DOM =====================
 const state = {
-  userId: null,
-  sessionId: null,
+  pdfReady: false,
+  userId: `user_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,
+  sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2,9)}`,
   currentStep: 0,
   isConnected: false,
   isTyping: false,
-  conversationData: {}
+  conversationData: {},
+  isPolling: false
 };
-
-let lastUserMessage = '';
 
 const elements = {
   startBtn: document.getElementById('startBtn'),
@@ -178,136 +178,44 @@ const elements = {
 };
 
 const stepSectionMap = {
-  1: 'section-name',
-  2: 'section-idea',
-  3: 'section-problem',
-  4: 'section-customer',
-  5: 'section-revenue',
-  6: 'section-research',
-  7: 'section-final'
+  1: 'section-name', 2: 'section-idea', 3: 'section-problem',
+  4: 'section-customer', 5: 'section-revenue', 6: 'section-research', 7: 'section-final'
 };
 
-/* ===================== INIT ===================== */
-document.addEventListener('DOMContentLoaded', initializeApp);
-
-function initializeApp() {
-  state.userId = `user_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
-  state.sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
-
+// ===================== INICIALIZACIÓN =====================
+document.addEventListener('DOMContentLoaded', () => {
   elements.startBtn.addEventListener('click', startConversation);
   elements.sendBtn.addEventListener('click', sendMessage);
-  elements.messageInput.addEventListener('keypress', handleKeyPress);
+  elements.messageInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
 
   checkConnection();
+  console.log('Alex MVP inicializado', { userId: state.userId, sessionId: state.sessionId });
+});
 
-  console.log('Alex MVP inicializado', {
-    userId: state.userId,
-    sessionId: state.sessionId,
-    webhookUrl: CONFIG.webhookUrl
-  });
-}
-
-function sendMessage() {
-  const message = elements.messageInput.value.trim();
-  if (!message || state.isTyping) return;
-
-  lastUserMessage = message;
-  showUserMessage(message);
-  elements.messageInput.value = '';
-  removeQuickReplies();
-  
-  processMessage(message);
-}
-
-async function sendMessageNoWait(message) {
-  const payload = {
-    message,
-    userId: state.userId,
-    sessionId: state.sessionId,
-    currentStep: state.currentStep,
-    state: state.conversationData
-  };
-
-  try {
-    // Fire and forget - no esperamos respuesta
-    fetch(CONFIG.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      mode: 'cors',
-      credentials: 'omit'
-    }).catch(() => {
-      // Ignoramos errores en fire and forget
-      console.log('Fire and forget request - no esperamos respuesta');
-    });
-  } catch (error) {
-    console.log('Error en fire and forget (ignorado):', error);
-  }
-}
-
-/* ===================== CONNECTION ===================== */
+// ===================== FUNCIONES PRINCIPALES =====================
 async function checkConnection() {
-  console.log('Verificando conexión...');
-  const payload = { 
-    message: '_connection_test', 
-    userId: state.userId, 
-    sessionId: state.sessionId 
-  };
-
   try {
     const response = await fetch(CONFIG.webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      mode: 'cors',
-      credentials: 'omit',
-      signal: AbortSignal.timeout(CONFIG.requestTimeout)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '_connection_test', userId: state.userId, sessionId: state.sessionId }),
+      signal: AbortSignal.timeout(10000)
     });
 
-    let data = {};
-    try {
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = { raw: await response.text() };
-      }
-    } catch(e) {
-      console.warn('Respuesta no es JSON válido:', e);
-    }
-
     if (response.ok) {
-      console.log('Conectado exitosamente');
+      state.isConnected = true;
       setConnectionStatus(true, 'Conectado');
     } else {
-      console.warn('Conexión fallida:', response.status);
-      setConnectionStatus(false, `Error ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
     }
-    return data;
   } catch (error) {
-    console.error('Error en conexión:', error);
+    console.error('Error de conexión:', error);
     setConnectionStatus(false, 'Error de conexión');
-    return {};
-  }
-}
-
-function setConnectionStatus(connected, message) {
-  state.isConnected = connected;
-  elements.statusDot.classList.toggle('connected', connected);
-  elements.statusText.textContent = message;
-}
-
-/* ===================== INPUT HANDLING ===================== */
-function handleKeyPress(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
   }
 }
 
@@ -318,56 +226,29 @@ function startConversation() {
     return;
   }
   
-  console.log('Iniciando conversación...');
-  
   elements.welcomeScreen.style.display = 'none';
   elements.messageInput.disabled = false;
   elements.sendBtn.disabled = false;
   elements.messageInput.focus();
 
-  setTimeout(async () => {
-    console.log('Enviando mensaje de inicio...');
-    try {
-      const previousMessage = lastUserMessage;
-      lastUserMessage = '_iniciar_conversacion';
-      await processMessage('_iniciar_conversacion');
-      
-      if (previousMessage && previousMessage !== '_iniciar_conversacion') {
-        lastUserMessage = previousMessage;
-      }
-    } catch (error) {
-      console.error('Error iniciando conversación:', error);
-      showError('Error iniciando conversación. Intenta de nuevo.');
-    }
-  }, 400);
+  setTimeout(() => processMessage('_iniciar_conversacion'), 500);
 }
 
-/* ===================== BACKEND COMMUNICATION ===================== */
-async function processMessage(message, retryCount = 0) {
+function sendMessage() {
+  const message = elements.messageInput.value.trim();
+  if (!message || state.isTyping) return;
+
+  showUserMessage(message);
+  elements.messageInput.value = '';
+  removeQuickReplies();
+  processMessage(message);
+}
+
+async function processMessage(message) {
   showTyping();
 
   const isGeneratingPlan = message.toLowerCase().includes('generar plan completo');
-  
-  if (isGeneratingPlan) {
-    // NO mostrar mensaje aquí - ya se mostró en selectQuickReply
-    setTimeout(() => {
-      hideTyping();
-      // Marcar progreso sin mensaje adicional
-      
-      // Iniciar polling después de 55 segundos
-      setTimeout(() => {
-        console.log('Iniciando polling para generación de plan...');
-        startPollingForPDF();
-      }, 55000);
-    }, 500);
-    
-    // Enviar mensaje pero SIN mostrar error en consola
-    sendMessageSilent(message);
-    return;
-  }
 
-  // Corrección 3: Nueva función sendMessageSilent para evitar error 504 en consola
-async function sendMessageSilent(message) {
   const payload = {
     message,
     userId: state.userId,
@@ -375,220 +256,138 @@ async function sendMessageSilent(message) {
     currentStep: state.currentStep,
     state: state.conversationData
   };
-
-  try {
-    // Crear AbortController para cancelar después de 50s
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 50000);
-
-    fetch(CONFIG.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      mode: 'cors',
-      credentials: 'omit',
-      signal: controller.signal
-    }).then(() => {
-      clearTimeout(timeoutId);
-      console.log('Fire and forget completado exitosamente');
-    }).catch((error) => {
-      clearTimeout(timeoutId);
-      // No mostrar error - es esperado para fire and forget
-      console.log('Fire and forget terminado (esperado):', error.name);
-    });
-
-  } catch (error) {
-    // Silenciar completamente - no mostrar en consola
-  }
-}
-
-  // Para mensajes normales - continúa igual...
-  const payload = {
-    message,
-    userId: state.userId,
-    sessionId: state.sessionId,
-    currentStep: state.currentStep,
-    state: state.conversationData
-  };
-  
-  console.log(`Enviando mensaje (sin reintentos):`, payload);
 
   try {
     const response = await fetch(CONFIG.webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      mode: 'cors',
-      credentials: 'omit',
-      signal: AbortSignal.timeout(55000)
+      signal: AbortSignal.timeout(CONFIG.requestTimeout)
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') 
-      ? await response.json()
-      : { success: true, response: await response.text() };
-
-    console.log('Respuesta recibida:', data);
+    const data = await response.json();
     hideTyping();
-    handleSuccessfulResponse(data);
+    handleResponse(data);
+
+    // Iniciar polling si es generación de plan
+    if (isGeneratingPlan && !state.isPolling) {
+      startPDFPolling();
+    }
 
   } catch (error) {
     hideTyping();
-    console.error(`Error en comunicación:`, error);
+    console.error('Error:', error);
     
-    if (error.name === 'AbortError' || error.message.includes('timeout')) {
-      showAIMessage("El servidor está procesando tu solicitud. Te mantendré informado del progreso...");
-      setTimeout(() => startPollingForPDF(), 10000);
+    if (isGeneratingPlan) {
+      showAIMessage("El proceso se está ejecutando. Verificando estado...");
+      startPDFPolling();
     } else {
-      showError('Error conectando con Alex. Por favor, intenta de nuevo.');
-      setConnectionStatus(false, 'Error de conexión');
+      showError('Error conectando con Alex. Intenta de nuevo.');
     }
   }
 }
 
-function handleSuccessfulResponse(data) {
-  console.log('Procesando respuesta:', data);
-  
-  if (!data || data.success === false) {
-    console.warn('Respuesta inválida del servidor:', data);
-    showError('La respuesta del servidor no es válida.');
-    return;
-  }
+function handleResponse(data) {
+  if (!data) return;
 
-  // Manejar PDF generado
-  if (data.pdfGenerated && data.pdfUrl) {
-    console.log('PDF generado:', data.pdfUrl);
-    
-    // Guardar URL del PDF
+  // Manejar PDF completado (solo si no estamos en polling)
+  if (data.pdfGenerated && data.pdfUrl && !state.isPolling) {
+    state.isPolling = false; // Detener cualquier polling activo
     localStorage.setItem('alex_last_pdf_url', data.pdfUrl);
-    localStorage.setItem('alex_last_pdf_filename', data.fileName || `plan_negocio_${Date.now()}.pdf`);
+    for (let i = 1; i <= 7; i++) markSectionCompleted(i);
     
-    // Actualizar estado
-    if (data.state) {
-      state.conversationData = data.state;
-    }
-    
-    // Marcar todas las secciones como completadas
-    for (let i = 1; i <= 7; i++) {
-      markSectionCompleted(i);
-    }
-    
-    // Mostrar mensaje de finalización
-    showAIMessage(
-      '¡Tu Plan de Negocio está listo! He creado un documento profesional de 25 páginas con análisis específico para Gran Canaria.',
-      [
-        { text: '📄 Descargar PDF', handler: `downloadPlan()` },
-        { text: '📧 Enviar por email', handler: 'promptEmailAndSend()' },
-        { text: '💬 Hacer consultas', handler: 'askQuestions()' },
-        { text: '🔄 Crear nuevo plan', handler: 'clearSession()' }
-      ]
-    );
-    
-    elements.messageInput.placeholder = 'Plan completado. Selecciona una opción arriba o haz consultas específicas.';
+    showPDFReadyMessage(data.pdfUrl);
     return;
   }
 
   // Procesar respuesta normal
-  const aiText = data.response || data.message;
-  if (aiText && aiText !== "Error: no hay respuesta") {
-    // Workaround: si recibimos "Respuesta procesada" después de "Generar plan completo"
-    if (aiText === "Respuesta procesada" && lastUserMessage === "Generar plan completo") {
-      showAIMessage("¡Perfecto! Estoy generando tu plan de negocio completo con análisis de mercado específico para Gran Canaria. Esto tomará unos momentos...");
-      // Forzar finalización
-      markSectionCompleted(6);
-      markSectionCompleted(7);
-      setTimeout(() => {
-        showAIMessage(
-          '¡Tu Plan de Negocio está listo! He creado un documento profesional de 25 páginas con análisis específico para Gran Canaria.',
-          [
-            { text: '📄 Descargar PDF', handler: `downloadPlan()` },
-            { text: '📧 Enviar por email', handler: 'promptEmailAndSend()' },
-            { text: '💬 Hacer consultas', handler: 'askQuestions()' },
-            { text: '🔄 Crear nuevo plan', handler: 'clearSession()' }
-          ]
-        );
-      }, 3000);
-    } else {
-      showAIMessage(aiText);
-    }
-  }
+  const aiText = data.response || data.reply;
+  if (aiText) showAIMessage(aiText);
 
   // Actualizar estado
   const previousStep = state.currentStep;
   if (data.currentStep !== undefined) {
     state.currentStep = parseInt(data.currentStep);
-    console.log(`Paso cambió de: ${previousStep} → ${state.currentStep}`);
+    if (data.currentStep > previousStep) {
+      updatePlanSection(data.currentStep);
+    }
   }
   
-  if (data.state) {
-    state.conversationData = data.state;
-  }
-
-  // Procesar secciones basado en transición de pasos
-  if (lastUserMessage !== '_iniciar_conversacion' && data.currentStep > previousStep) {
-    updatePlanSection(lastUserMessage, data.currentStep);
-  }
-
-  // Manejo de respuestas rápidas
-  if (Array.isArray(data.quickReplies) && data.quickReplies.length > 0) {
-    addQuickReplies(data.quickReplies);
-  }
-  
-  // Verificación de completitud
-  if (data.isComplete && !data.pdfGenerated) {
-    showAIMessage('Generando tu Plan de Negocio en PDF... Un momento por favor...');
-  }
+  if (data.state) state.conversationData = data.state;
+  if (data.quickReplies?.length > 0) addQuickReplies(data.quickReplies);
 }
 
-/* ===================== PLAN MANAGEMENT ===================== */
-function updatePlanSection(userMessage, receivedStep) {
-  console.log('Actualizando sección:', { userMessage, receivedStep });
-
-  const completedStep = receivedStep - 1;
-  const sectionId = stepSectionMap[completedStep];
+// ===================== POLLING DE PDF =====================
+async function startPDFPolling() {
+  if (state.isPolling) return;
+  state.isPolling = true;
   
-  if (!sectionId) {
-    console.warn('No se encontró sección para el paso:', completedStep);
-    return;
-  }
+  let attempts = 0;
+  const maxAttempts = 24; // 6 minutos máximo
 
-  const section = document.getElementById(sectionId);
-  if (!section) {
-    console.warn('Elemento de sección no encontrado:', sectionId);
-    return;
-  }
+  const poll = async () => {
+    if (attempts >= maxAttempts) {
+      state.isPolling = false;
+      showError('El PDF está tardando más de lo esperado.');
+      return;
+    }
 
-  // Marcar como completada
-  markSectionCompleted(completedStep, userMessage);
+    try {
+      const response = await fetch(CONFIG.statusUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: state.sessionId }),
+        signal: AbortSignal.timeout(10000)
+      });
 
-  // Marcar secciones anteriores como completadas
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.pdfGenerated && data.pdfUrl) {
+          state.isPolling = false;
+          localStorage.setItem('alex_last_pdf_url', data.pdfUrl);
+          markSectionCompleted(7);
+          
+          showPDFReadyMessage();
+          return;
+        }
+      }
+      
+      attempts++;
+      if (attempts % 4 === 0) { // Cada minuto
+        showAIMessage(`Generando tu plan... ${Math.min(80 + attempts * 2, 95)}% completado.`);
+      }
+      
+      setTimeout(poll, CONFIG.pollingInterval);
+      
+    } catch (error) {
+      attempts++;
+      setTimeout(poll, CONFIG.pollingInterval);
+    }
+  };
+
+  poll();
+}
+
+// ===================== FUNCIONES DE UI =====================
+function updatePlanSection(currentStep) {
+  const completedStep = currentStep - 1;
+  
   for (let i = 1; i <= completedStep; i++) {
     markSectionCompleted(i);
   }
-
-  // Activar siguiente sección
-  if (receivedStep <= 7) {
-    const nextSectionId = stepSectionMap[receivedStep];
-    if (nextSectionId) {
-      activateSection(nextSectionId);
-    }
+  
+  if (currentStep <= 7) {
+    const nextSectionId = stepSectionMap[currentStep];
+    if (nextSectionId) activateSection(nextSectionId);
   }
 }
 
 function markSectionCompleted(stepNumber, content = null) {
   const sectionId = stepSectionMap[stepNumber];
   const section = document.getElementById(sectionId);
-  
   if (!section) return;
 
   const status = section.querySelector('.section-status');
@@ -599,27 +398,15 @@ function markSectionCompleted(stepNumber, content = null) {
   status.classList.add('completed');
   status.textContent = '✓';
   
-  // Actualizar contenido específico
-  if (content && content.trim() && content !== '_iniciar_conversacion') {
+  if (content) {
     const shortText = content.length > 50 ? content.substring(0, 50) + '...' : content;
     contentElement.textContent = shortText;
   }
 
-  // Contenido especial para secciones específicas
   if (stepNumber === 6) {
-    contentElement.innerHTML = `
-      <strong>Análisis completado:</strong><br>
-      • Mercado analizado<br>
-      • Competidores identificados<br>
-      • Oportunidades detectadas
-    `;
+    contentElement.innerHTML = '<strong>Análisis completado:</strong><br>• Mercado analizado<br>• Competidores identificados';
   } else if (stepNumber === 7) {
-    contentElement.innerHTML = `
-      <strong>Plan generado:</strong><br>
-      • 25 páginas profesionales<br>
-      • Análisis financiero<br>
-      • Roadmap implementación
-    `;
+    contentElement.innerHTML = '<strong>Plan generado:</strong><br>• 25 páginas profesionales<br>• Análisis financiero';
   }
 }
 
@@ -627,120 +414,10 @@ function activateSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (section && !section.classList.contains('completed')) {
     section.classList.add('active');
-    const status = section.querySelector('.section-status');
-    status.classList.add('active');
+    section.querySelector('.section-status').classList.add('active');
   }
 }
 
-/* ===================== EMAIL FUNCTIONALITY ===================== */
-function promptEmailAndSend() {
-  const email = prompt('¿A qué dirección de email quieres enviar tu plan de negocio?\n\nEjemplo: tunombre@gmail.com');
-  
-  if (!email) return;
-  
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    showError('Por favor introduce un email válido (ejemplo: nombre@dominio.com)');
-    return;
-  }
-  
-  sendPlanByEmail(email);
-}
-
-async function sendPlanByEmail(email) {
-  const pdfUrl = localStorage.getItem('alex_last_pdf_url');
-  
-  if (!pdfUrl) {
-    showError('No se encontró un PDF generado. Por favor, completa el proceso primero.');
-    return;
-  }
-  
-  showAIMessage(`📧 Enviando tu plan de negocio a ${email}... Un momento por favor.`);
-  
-  try {
-    const response = await fetch(CONFIG.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        message: '_send_email',
-        to: email,
-        pdfUrl: pdfUrl,
-        userId: state.userId,
-        sessionId: state.sessionId,
-        state: state.conversationData
-      }),
-      mode: 'cors'
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success !== false) {
-        showAIMessage(`✅ ¡Plan enviado exitosamente a ${email}! 
-        
-        Revisa tu bandeja de entrada en los próximos minutos.
-        Si no lo ves, verifica la carpeta de spam.
-        
-        El email incluye:
-        • Tu plan de negocio completo en PDF
-        • Enlaces a recursos de financiación
-        • Información de contacto del GobLab`);
-      } else {
-        throw new Error(data.error || 'Error en el servidor');
-      }
-    } else {
-      throw new Error('Error en el servidor');
-    }
-  } catch (error) {
-    console.error('Error enviando email:', error);
-    showError('No se pudo enviar el email en este momento. Puedes descargar el PDF directamente.');
-  }
-}
-
-/* ===================== UTILITY FUNCTIONS ===================== */
-function downloadPlan() {
-  const pdfUrl = localStorage.getItem('alex_last_pdf_url');
-  
-  if (pdfUrl) {
-    window.open(pdfUrl, '_blank');
-    showAIMessage('✅ Abriendo tu PDF en una nueva pestaña. Si no se abre automáticamente, verifica que tu navegador no esté bloqueando ventanas emergentes.');
-  } else {
-    showError('No se encontró un PDF generado. Por favor, completa todos los pasos primero.');
-  }
-}
-
-function clearSession() {
-  if (confirm('¿Estás seguro de que quieres empezar un nuevo plan? Se perderá el progreso actual.')) {
-    localStorage.removeItem('alex_session_id');
-    localStorage.removeItem('alex_last_pdf_url');
-    localStorage.removeItem('alex_last_pdf_filename');
-    state.sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
-    state.currentStep = 0;
-    state.conversationData = {};
-    window.location.reload();
-  }
-}
-
-function askQuestions() {
-  showAIMessage(`¡Perfecto! Ahora puedo responder preguntas específicas sobre tu plan de negocio.
-  
-  Puedes preguntarme sobre:
-  • Detalles de financiación disponible
-  • Estrategias de marketing para ${state.conversationData.data?.cliente || 'tu cliente objetivo'}
-  • Análisis de competencia en tu sector
-  • Proyecciones financieras más detalladas
-  • Pasos legales para constituir tu empresa
-  • Contactos y recursos en Gran Canaria
-  
-  ¿Qué te gustaría saber?`);
-  
-  elements.messageInput.placeholder = 'Haz tu pregunta sobre el plan de negocio...';
-  elements.messageInput.focus();
-}
-
-/* ===================== UI HELPERS ===================== */
 function showUserMessage(message) {
   const messageDiv = document.createElement('div');
   messageDiv.className = 'message user';
@@ -757,7 +434,7 @@ function showAIMessage(message, actions = []) {
   let actionsHTML = '';
   if (actions.length > 0) {
     actionsHTML = '<div class="message-actions">' +
-      actions.map(a => `<button class="action-btn" onclick="${escapeHTML(a.handler)}">${escapeHTML(a.text)}</button>`).join('') +
+      actions.map(a => `<button class="action-btn" onclick="${a.handler}">${a.text}</button>`).join('') +
       '</div>';
   }
   messageDiv.innerHTML = `
@@ -779,6 +456,7 @@ function showError(message) {
 }
 
 function showTyping() {
+  if (document.getElementById('typing')) return;
   const typingDiv = document.createElement('div');
   typingDiv.className = 'typing-indicator';
   typingDiv.id = 'typing';
@@ -815,16 +493,11 @@ function addQuickReplies(replies) {
 
 function selectQuickReply(reply) {
   if (reply === "Generar plan completo") {
-    lastUserMessage = "Generar plan completo";
     showUserMessage("Generar plan completo");
     removeQuickReplies();
-    
-    // SOLO mostrar mensaje UNA VEZ aquí
-    showAIMessage("¡Perfecto! Estoy generando tu plan de negocio completo con análisis de mercado específico para Gran Canaria. Esto tomará unos momentos...");
+    showAIMessage("¡Perfecto! Estoy generando tu plan de negocio completo. Esto tomará unos momentos...");
     markSectionCompleted(6);
     activateSection('section-final');
-    
-    // Procesar mensaje SIN mostrar mensaje adicional
     processMessage("Generar plan completo");
   } else {
     elements.messageInput.value = reply;
@@ -832,87 +505,33 @@ function selectQuickReply(reply) {
   }
 }
 
-
-async function startPollingForPDF() {
-  console.log('Iniciando polling para PDF...');
-  let attempts = 0;
-  const maxAttempts = 15; // 15 intentos × 20s = 5 minutos máximo
-  
-  const pollInterval = setInterval(async () => {
-    attempts++;
-    console.log(`Polling intento ${attempts}/${maxAttempts}`);
-    
-    try {
-      const response = await fetch('https://n8n.icc-e.org/webhook/mentor-chat-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          sessionId: state.sessionId,
-          userId: state.userId
-        }),
-        mode: 'cors',
-        signal: AbortSignal.timeout(15000) // 15 segundos timeout por intento
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Polling response:', data);
-        
-        if (data.pdfGenerated && data.pdfUrl) {
-          clearInterval(pollInterval);
-          
-          // PDF listo - actualizar UI
-          localStorage.setItem('alex_last_pdf_url', data.pdfUrl);
-          localStorage.setItem('alex_last_pdf_filename', data.fileName || `plan_negocio_${Date.now()}.pdf`);
-          
-          markSectionCompleted(7);
-          
-          showAIMessage(
-            '¡Tu Plan de Negocio está listo! 🎉 He creado un documento profesional de 25 páginas con análisis específico para Gran Canaria.',
-            [
-              { text: '📄 Descargar PDF', handler: `downloadPlan()` },
-              { text: '📧 Enviar por email', handler: 'promptEmailAndSend()' },
-              { text: '💬 Hacer consultas', handler: 'askQuestions()' },
-              { text: '🔄 Crear nuevo plan', handler: 'clearSession()' }
-            ]
-          );
-          
-          elements.messageInput.placeholder = 'Plan completado. Selecciona una opción arriba o haz consultas específicas.';
-          return;
-        }
-      }
-      
-      // Mensaje de progreso cada 5 intentos (cada 100 segundos)
-      if (attempts % 5 === 0 && attempts < maxAttempts) {
-        showAIMessage(`Generando tu plan... ${Math.round((attempts/maxAttempts)*100)}% completado. Un poco más de paciencia.`);
-      }
-      
-      if (attempts >= maxAttempts) {
-        clearInterval(pollInterval);
-        showError('El PDF está tardando más de lo esperado. Por favor, contacta con soporte o intenta de nuevo más tarde.');
-      }
-    } catch (error) {
-      console.error('Error en polling:', error);
-      if (attempts >= maxAttempts) {
-        clearInterval(pollInterval);
-        showError('Error verificando el estado del PDF. Intenta de nuevo más tarde.');
-      }
-    }
-  }, 20000); // Polling cada 20 segundos
-}
-
 function removeQuickReplies() {
   const quick = document.getElementById('quickReplies');
   if (quick) quick.remove();
+}
+
+function setConnectionStatus(connected, message) {
+  state.isConnected = connected;
+  elements.statusDot.classList.toggle('connected', connected);
+  elements.statusText.textContent = message;
 }
 
 function scrollToBottom() {
   elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
-/* ===================== UTILITY FUNCTIONS ===================== */
+function showPDFReadyMessage() {
+  showAIMessage(
+    '¡Tu Plan de Negocio está listo! He creado un documento profesional con análisis específico para Gran Canaria.',
+    [
+      { text: '📄 Descargar PDF', handler: 'downloadPlan()' },
+      { text: '📧 Enviar por email', handler: 'promptEmailAndSend()' },
+      { text: '💬 Hacer consultas', handler: 'askQuestions()' }
+    ]
+  );
+}
+
+// ===================== FUNCIONES DE UTILIDAD =====================
 function escapeHTML(text) { 
   const div = document.createElement('div'); 
   div.textContent = text; 
@@ -926,11 +545,80 @@ function formatMessage(text) {
     .replace(/\n/g, '<br>');
 }
 
-/* ===================== GLOBAL FUNCTION EXPOSURE ===================== */
+// ===================== FUNCIONES PRINCIPALES =====================
+function downloadPlan() {
+  const pdfUrl = localStorage.getItem('alex_last_pdf_url');
+  if (pdfUrl) {
+    window.open(pdfUrl, '_blank');
+    showAIMessage('✅ Abriendo tu PDF en una nueva pestaña.');
+  } else {
+    showError('No se encontró un PDF generado.');
+  }
+}
+
+async function promptEmailAndSend() {
+  const email = prompt('¿A qué dirección de email quieres enviar tu plan?\n\nEjemplo: nombre@gmail.com');
+  if (!email) return;
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showError('Por favor introduce un email válido');
+    return;
+  }
+  
+  const pdfUrl = localStorage.getItem('alex_last_pdf_url');
+  if (!pdfUrl) {
+    showError('No se encontró un PDF generado.');
+    return;
+  }
+  
+  showAIMessage(`📧 Enviando tu plan a ${email}...`);
+  
+  try {
+    const response = await fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: '_send_email',
+        to: email,
+        pdfUrl: pdfUrl,
+        userId: state.userId,
+        sessionId: state.sessionId,
+        state: state.conversationData
+      })
+    });
+
+    if (response.ok) {
+      showAIMessage(`✅ ¡Plan enviado exitosamente a ${email}!`);
+    } else {
+      throw new Error('Error del servidor');
+    }
+  } catch (error) {
+    showError('No se pudo enviar el email. Puedes descargar el PDF directamente.');
+  }
+}
+
+function askQuestions() {
+  showAIMessage(`¡Perfecto! Ahora puedo responder preguntas específicas sobre tu plan de negocio.
+  
+  Puedes preguntarme sobre:
+  • Detalles de financiación disponible
+  • Estrategias de marketing para tu cliente objetivo
+  • Análisis de competencia en tu sector
+  • Proyecciones financieras más detalladas
+  • Pasos legales para constituir tu empresa
+  • Contactos y recursos en Gran Canaria
+  
+  ¿Qué te gustaría saber?`);
+  
+  elements.messageInput.placeholder = 'Haz tu pregunta sobre el plan de negocio...';
+  elements.messageInput.focus();
+}
+
+// Exponer funciones globalmente
 window.downloadPlan = downloadPlan;
 window.promptEmailAndSend = promptEmailAndSend;
 window.askQuestions = askQuestions;
-window.clearSession = clearSession;
 window.selectQuickReply = selectQuickReply;
 </script>
 </body>
